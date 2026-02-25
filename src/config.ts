@@ -7,6 +7,10 @@ export interface Config {
     port: number;
     nodeEnv: string;
   };
+  paperTrading: {
+    enabled: boolean;
+    initialBalance: number;
+  };
   polymarket: {
     clobEndpoint: string;
     gammaEndpoint: string;
@@ -40,13 +44,17 @@ export const config: Config = {
     port: parseInt(process.env.PORT || '3000', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
   },
+  paperTrading: {
+    enabled: process.env.PAPER_TRADING === 'true',
+    initialBalance: parseFloat(process.env.PAPER_TRADING_BALANCE || '100000'),
+  },
   polymarket: {
     clobEndpoint: process.env.POLYMARKET_CLOB_ENDPOINT || 'https://clob.polymarket.com',
     gammaEndpoint: process.env.POLYMARKET_GAMMA_ENDPOINT || 'https://gamma-api.polymarket.com',
     dataEndpoint: process.env.POLYMARKET_DATA_ENDPOINT || 'https://data-api.polymarket.com',
   },
   wallet: {
-    privateKey: process.env.PRIVATE_KEY || '',
+    privateKey: process.env.PRIVATE_KEY || 'test-key',
     proxyAddress: process.env.PROXY_ADDRESS,
     chainId: parseInt(process.env.CHAIN_ID || '137', 10),
   },
@@ -68,7 +76,7 @@ export const config: Config = {
   },
 };
 
-if (!config.wallet.privateKey) {
-  throw new Error('PRIVATE_KEY environment variable is required');
+if (!config.paperTrading.enabled && !config.wallet.privateKey) {
+  throw new Error('PRIVATE_KEY environment variable is required (or enable PAPER_TRADING mode)');
 }
 
