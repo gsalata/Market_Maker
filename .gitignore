@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+*.pid
+*.seed
+*.pid.lock
+coverage/
+.nyc_output/
+trades/
+*.xlsx
+
