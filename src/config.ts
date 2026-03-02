@@ -59,7 +59,13 @@ export const config: Config = {
     dataEndpoint: process.env.POLYMARKET_DATA_ENDPOINT || 'https://data-api.polymarket.com',
   },
   wallet: {
-    privateKey: process.env.PRIVATE_KEY || 'test-key',
+    privateKey: (() => {
+      let key = (process.env.PRIVATE_KEY || 'test-key').trim().replace(/^["']|["']$/g, '');
+      if (key !== 'test-key' && !key.startsWith('0x')) {
+        key = '0x' + key;
+      }
+      return key;
+    })(),
     proxyAddress: process.env.PROXY_ADDRESS,
     chainId: parseInt(process.env.CHAIN_ID || '137', 10),
   },
