@@ -28,12 +28,12 @@ export function initializeRoutes(
 }
 
 // Health check
-router.get('/health', (req: Request, res: Response) => {
+router.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 
 // Get bot status
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', async (_req: Request, res: Response) => {
   try {
     const status = marketMaker.getStatus();
     const positions = inventoryManager.getAllPositions();
@@ -89,7 +89,7 @@ router.post('/markets/:marketId/stop', async (req: Request, res: Response) => {
 });
 
 // Get active markets
-router.get('/markets', async (req: Request, res: Response) => {
+router.get('/markets', async (_req: Request, res: Response) => {
   try {
     const activeMarkets = marketMaker.getActiveMarkets();
     res.json({
@@ -111,7 +111,7 @@ router.get('/markets', async (req: Request, res: Response) => {
 });
 
 // Get positions
-router.get('/positions', async (req: Request, res: Response) => {
+router.get('/positions', async (_req: Request, res: Response) => {
   try {
     const positions = inventoryManager.getAllPositions();
     res.json({
@@ -133,7 +133,7 @@ router.get('/positions', async (req: Request, res: Response) => {
 });
 
 // Get orders
-router.get('/orders', async (req: Request, res: Response) => {
+router.get('/orders', async (_req: Request, res: Response) => {
   try {
     const orders = await client.getOrders();
     res.json({

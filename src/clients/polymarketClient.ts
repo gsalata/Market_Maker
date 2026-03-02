@@ -1,23 +1,17 @@
+import { ClobClient, ApiKeyCreds, Side, OrderType } from '@polymarket/clob-client';
 import axios, { AxiosInstance } from 'axios';
-import { ethers } from 'ethers';
+import { Wallet } from '@ethersproject/wallet';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { Orderbook, Market, Position, Order } from '../types';
 
 export class PolymarketClient {
-  private clobClient: AxiosInstance;
+  private clobClient!: ClobClient;
   private gammaClient: AxiosInstance;
   private dataClient: AxiosInstance;
-  private wallet: ethers.Wallet;
-  private apiKey?: string;
-  private apiSecret?: string;
+  private wallet: Wallet;
 
   constructor() {
-    this.clobClient = axios.create({
-      baseURL: config.polymarket.clobEndpoint,
-      timeout: 30000,
-    });
-
     this.gammaClient = axios.create({
       baseURL: config.polymarket.gammaEndpoint,
       timeout: 30000,
@@ -28,20 +22,65 @@ export class PolymarketClient {
       timeout: 30000,
     });
 
-    // Initialize wallet
-    this.wallet = new ethers.Wallet(config.wallet.privateKey);
+    // Initialize wallet with ethers v5 (required by @polymarket/clob-client)
+    this.wallet = new Wallet(config.wallet.privateKey);
     logger.info(`Initialized wallet: ${this.wallet.address}`);
   }
 
   /**
-   * Initialize API credentials for authenticated requests
+   * Initialize API credentials for authenticated requests.
+   * If CLOB_API_KEY / CLOB_SECRET / CLOB_PASSPHRASE are set in .env, uses those.
+   * Otherwise derives new credentials from the wallet's private key.
    */
   async initializeApiCredentials(): Promise<void> {
     try {
-      // For now, we'll use the wallet address as the user
-      // In production, you'd need to implement proper API key generation
-      // based on Polymarket's authentication scheme
-      logger.info('API credentials initialized');
+      const { apiKey, apiSecret, passphrase } = config.apiCredentials;
+
+      if (apiKey && apiSecret && passphrase) {
+        // Use pre-existing credentials from .env
+        const creds: ApiKeyCreds = {
+          key: apiKey,
+          secret: apiSecret,
+          passphrase: passphrase,
+        };
+
+        this.clobClient = new ClobClient(
+          config.polymarket.clobEndpoint,
+          config.wallet.chainId,
+          this.wallet,
+          creds,
+          config.wallet.proxyAddress ? 2 : 0, // GNOSIS_SAFE=2 if proxy, EOA=0
+          config.wallet.proxyAddress || this.wallet.address,
+        );
+
+        logger.info('CLOB client initialized with existing API credentials');
+      } else {
+        // Derive credentials from wallet
+        const tempClient = new ClobClient(
+          config.polymarket.clobEndpoint,
+          config.wallet.chainId,
+          this.wallet,
+        );
+
+        logger.info('Deriving API credentials from wallet...');
+        const creds = await tempClient.createOrDeriveApiKey();
+
+        this.clobClient = new ClobClient(
+          config.polymarket.clobEndpoint,
+          config.wallet.chainId,
+          this.wallet,
+          creds,
+          config.wallet.proxyAddress ? 2 : 0,
+          config.wallet.proxyAddress || this.wallet.address,
+        );
+
+        logger.info('CLOB client initialized with derived API credentials');
+        logger.info('Save these credentials to your .env to avoid re-deriving:');
+        logger.info(`  CLOB_API_KEY=${creds.key}`);
+        logger.info(`  CLOB_SECRET=${creds.secret}`);
+        logger.info(`  CLOB_PASSPHRASE=${creds.passphrase}`);
+      }
+
     } catch (error) {
       logger.error('Failed to initialize API credentials', error);
       throw error;
@@ -51,23 +90,21 @@ export class PolymarketClient {
   /**
    * Get orderbook for a token
    */
-  async getOrderbook(tokenId: string, depth: number = 50): Promise<Orderbook | null> {
+  async getOrderbook(tokenId: string, _depth: number = 50): Promise<Orderbook | null> {
     try {
-      const response = await this.clobClient.get('/book', {
-        params: { token_id: tokenId, depth },
-      });
-      return response.data;
+      const book = await this.clobClient.getOrderBook(tokenId);
+      return book as unknown as Orderbook;
     } catch (error: any) {
       logger.error(`Failed to fetch orderbook for token ${tokenId}`, {
         error: error.message,
-        status: error.response?.status,
+        status: error.status,
       });
       return null;
     }
   }
 
   /**
-   * Get market information
+   * Get market information from the Gamma API
    */
   async getMarket(marketId: string): Promise<Market | null> {
     try {
@@ -82,7 +119,6 @@ export class PolymarketClient {
         return null;
       }
 
-      // Parse clobTokenIds if it's a string
       let tokenIds: string[] = [];
       if (market.clobTokenIds) {
         if (typeof market.clobTokenIds === 'string') {
@@ -135,29 +171,32 @@ export class PolymarketClient {
   }
 
   /**
-   * Get open orders
+   * Get open orders via the CLOB client
    */
   async getOrders(): Promise<Order[]> {
     try {
-      // Note: This endpoint may require authentication
-      // You'll need to implement proper auth headers based on Polymarket's API
-      const response = await this.clobClient.get('/orders', {
-        headers: {
-          // Add authentication headers here
-        },
-      });
-      return Array.isArray(response.data) ? response.data : [];
+      const orders = await this.clobClient.getOpenOrders();
+      return (orders as any[]).map((o: any) => ({
+        id: o.id || o.orderID || '',
+        marketId: o.market || '',
+        tokenId: o.asset_id || o.tokenID || '',
+        side: o.side === 'BUY' ? 'BUY' : 'SELL',
+        price: o.price?.toString() || '0',
+        size: o.original_size?.toString() || o.size?.toString() || '0',
+        filled: o.size_matched?.toString() || '0',
+        status: o.status || 'OPEN',
+        createdAt: o.created_at || new Date().toISOString(),
+      }));
     } catch (error: any) {
       logger.error('Failed to fetch orders', {
         error: error.message,
-        status: error.response?.status,
       });
       return [];
     }
   }
 
   /**
-   * Place a limit order
+   * Place a limit order using the CLOB client (signed + authenticated)
    */
   async placeOrder(
     tokenId: string,
@@ -166,26 +205,35 @@ export class PolymarketClient {
     size: string
   ): Promise<Order | null> {
     try {
-      // Note: This requires proper authentication and signature
-      // You'll need to implement the full order signing logic
-      // This is a placeholder - actual implementation requires:
-      // 1. Create order payload
-      // 2. Sign with wallet
-      // 3. Send to CLOB API
-
       logger.info(`Placing ${side} order: ${size} @ ${price} for token ${tokenId}`);
 
-      // Placeholder - implement actual order placement
-      // const orderPayload = {
-      //   token_id: tokenId,
-      //   side: side.toLowerCase(),
-      //   price,
-      //   size,
-      //   ...
-      // };
-      // const response = await this.clobClient.post('/order', orderPayload);
+      const resp = await this.clobClient.createAndPostOrder(
+        {
+          tokenID: tokenId,
+          price: parseFloat(price),
+          side: side === 'BUY' ? Side.BUY : Side.SELL,
+          size: parseFloat(size),
+        },
+        { tickSize: '0.01', negRisk: false },
+        OrderType.GTC,
+      );
 
-      logger.warn('Order placement not fully implemented - requires CLOB client library');
+      if (resp && resp.orderID) {
+        logger.info(`Order placed: ${resp.orderID}`);
+        return {
+          id: resp.orderID,
+          marketId: '',
+          tokenId,
+          side,
+          price,
+          size,
+          filled: '0',
+          status: 'LIVE',
+          createdAt: new Date().toISOString(),
+        };
+      }
+
+      logger.warn('Order placement returned no orderID', resp);
       return null;
     } catch (error: any) {
       logger.error('Failed to place order', {
@@ -200,15 +248,14 @@ export class PolymarketClient {
   }
 
   /**
-   * Cancel an order
+   * Cancel an order via the CLOB client
    */
   async cancelOrder(orderId: string): Promise<boolean> {
     try {
-      // Placeholder - implement actual cancellation
       logger.info(`Cancelling order ${orderId}`);
-      // await this.clobClient.delete(`/order/${orderId}`);
-      logger.warn('Order cancellation not fully implemented - requires CLOB client library');
-      return false;
+      await this.clobClient.cancelOrder({ orderID: orderId });
+      logger.info(`Order cancelled: ${orderId}`);
+      return true;
     } catch (error: any) {
       logger.error(`Failed to cancel order ${orderId}`, {
         error: error.message,
@@ -243,5 +290,11 @@ export class PolymarketClient {
   getAddress(): string {
     return config.wallet.proxyAddress || this.wallet.address;
   }
-}
 
+  /**
+   * Get the underlying CLOB client (for advanced usage)
+   */
+  getClobClient(): ClobClient {
+    return this.clobClient;
+  }
+}

@@ -31,7 +31,7 @@ async function main() {
   app.use(express.urlencoded({ extended: true }));
 
   // Request logging
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     logger.info(`${req.method} ${req.path}`, {
       ip: req.ip,
       userAgent: req.get('user-agent'),
@@ -43,7 +43,7 @@ async function main() {
   app.use('/api', initializeRoutes(client, orderbookMonitor, inventoryManager, marketMaker));
 
   // Root route
-  app.get('/', (req, res) => {
+  app.get('/', (_req, res) => {
     res.json({
       name: 'Polymarket Market Maker Bot',
       version: '1.0.0',
@@ -59,7 +59,8 @@ async function main() {
   });
 
   // Error handling
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error('Unhandled error', {
       error: err.message,
       stack: err.stack,
