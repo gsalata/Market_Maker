@@ -21,6 +21,11 @@ export interface Config {
     proxyAddress?: string;
     chainId: number;
   };
+  apiCredentials: {
+    apiKey: string;
+    apiSecret: string;
+    passphrase: string;
+  };
   strategy: {
     defaultSpreadBps: number;
     defaultOrderSizeUsd: number;
@@ -57,6 +62,11 @@ export const config: Config = {
     privateKey: process.env.PRIVATE_KEY || 'test-key',
     proxyAddress: process.env.PROXY_ADDRESS,
     chainId: parseInt(process.env.CHAIN_ID || '137', 10),
+  },
+  apiCredentials: {
+    apiKey: process.env.CLOB_API_KEY || '',
+    apiSecret: process.env.CLOB_SECRET || '',
+    passphrase: process.env.CLOB_PASSPHRASE || '',
   },
   strategy: {
     defaultSpreadBps: parseInt(process.env.DEFAULT_SPREAD_BPS || '50', 10),

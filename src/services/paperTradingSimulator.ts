@@ -1,5 +1,4 @@
 import { logger } from '../utils/logger';
-import { tradeLogger, TradeRecord } from '../utils/tradeLogger';
 
 export interface SimulatedOrder {
   id: string;

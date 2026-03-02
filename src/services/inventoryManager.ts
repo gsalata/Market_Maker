@@ -74,7 +74,6 @@ export class InventoryManager {
     const yesValue = yesPosition ? parseFloat(yesPosition.curPrice || '0') * yesSize : 0;
     const noValue = noPosition ? parseFloat(noPosition.curPrice || '0') * noSize : 0;
 
-    const totalValue = yesValue + noValue;
     const netExposure = yesValue - noValue;
 
     return {

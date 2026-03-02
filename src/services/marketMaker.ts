@@ -272,11 +272,7 @@ export class MarketMaker {
       return quotes;
     }
     
-    const inventory = this.inventoryManager.getInventory(activeMarket.market.conditionId);
     const imbalance = this.inventoryManager.getInventoryImbalance(activeMarket.market.conditionId);
-
-    // Calculate spread in price terms
-    const spread = (snapshot.midPrice * marketConfig.spreadBps) / 10000;
 
     // Adjust spread based on inventory imbalance
     // If we're long YES, widen YES ask and narrow YES bid
